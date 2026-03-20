@@ -1,18 +1,33 @@
 #!/usr/bin/env python3
 """
-Smart ADB Tool Pro - One Click Optimization
-Author: Your Name
-Version: 2.0
-Description: Ultimate ADB tool with auto-install, progress bars, and beautiful UI
+SMART ADB ULTIMATE v3.1 - FULLY FIXED
+One-Click System Optimizer + Advanced Tools
+Works on: Termux, Linux, Windows, macOS
 """
 
 import subprocess
 import sys
 import os
 import time
-import threading
+import json
 import platform
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Dict, Callable
+
+# ==================== CONFIGURATION ====================
+CONFIG_FILE = os.path.expanduser("~/.smart_adb_config.json")
+DEFAULT_CONFIG = {
+    "resolution": {"width": 550, "height": 1550},
+    "dpi": 240,
+    "apps_to_kill": [
+        "com.facebook.katana", "com.facebook.orca",
+        "com.instagram.android", "com.whatsapp",
+        "com.zhiliaoapp.musically", "com.snapchat.android",
+        "com.twitter.android", "com.spotify.music",
+        "com.netflix.mediaclient", "com.google.android.youtube"
+    ],
+    "auto_backup": True,
+    "wifi_port": 5555
+}
 
 # ==================== COLOR SYSTEM ====================
 class Colors:
@@ -22,13 +37,31 @@ class Colors:
     GREEN = '\033[92m'
     YELLOW = '\033[93m'
     RED = '\033[91m'
+    MAGENTA = '\033[95m'
     END = '\033[0m'
     BOLD = '\033[1m'
     DIM = '\033[2m'
-    BLINK = '\033[5m'
-    REVERSE = '\033[7m'
+    UNDERLINE = '\033[4m'
 
-# ==================== UI COMPONENTS ====================
+# ==================== UTILITIES ====================
+def load_config() -> dict:
+    """Load configuration from file"""
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return DEFAULT_CONFIG.copy()
+
+def save_config(config: dict):
+    """Save configuration to file"""
+    try:
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(config, f, indent=2)
+    except:
+        pass
+
 def clear_screen():
     """Clear terminal screen"""
     os.system('clear' if platform.system() != 'Windows' else 'cls')
@@ -37,55 +70,36 @@ def print_header():
     """Print beautiful header"""
     clear_screen()
     print(Colors.CYAN + "╔" + "═" * 58 + "╗" + Colors.END)
-    print(Colors.CYAN + "║" + Colors.BOLD + Colors.GREEN + " " * 12 + "SMART ADB TOOL PRO - OPTIMIZER" + " " * 13 + Colors.CYAN + "║" + Colors.END)
-    print(Colors.CYAN + "║" + Colors.DIM + " " * 18 + "One Click System Optimizer" + " " * 19 + Colors.CYAN + "║" + Colors.END)
+    print(Colors.CYAN + "║" + Colors.BOLD + Colors.GREEN + " " * 12 + "SMART ADB ULTIMATE v3.1" + " " * 17 + Colors.CYAN + "║" + Colors.END)
+    print(Colors.CYAN + "║" + Colors.DIM + " " * 16 + "Ultimate Android Optimizer" + " " * 20 + Colors.CYAN + "║" + Colors.END)
     print(Colors.CYAN + "╚" + "═" * 58 + "╝" + Colors.END)
     print()
 
 def print_status(message: str, status_type: str = "info"):
     """Print status messages with icons"""
     icons = {
-        "info": "📌",
-        "success": "✅",
-        "error": "❌",
-        "warning": "⚠️",
-        "progress": "🔄",
-        "device": "📱",
-        "wifi": "🌐",
-        "check": "🔍"
+        "info": "📌", "success": "✅", "error": "❌", "warning": "⚠️",
+        "progress": "🔄", "device": "📱", "wifi": "🌐", "check": "🔍",
+        "settings": "⚙️", "backup": "💾", "restore": "♻️", "stats": "📊"
     }
-    
     colors = {
-        "info": Colors.BLUE,
-        "success": Colors.GREEN,
-        "error": Colors.RED,
-        "warning": Colors.YELLOW,
-        "progress": Colors.CYAN,
-        "device": Colors.MAGENTA if hasattr(Colors, 'MAGENTA') else Colors.BLUE,
-        "wifi": Colors.BLUE,
-        "check": Colors.YELLOW
+        "info": Colors.BLUE, "success": Colors.GREEN, "error": Colors.RED,
+        "warning": Colors.YELLOW, "progress": Colors.CYAN, "device": Colors.MAGENTA,
+        "wifi": Colors.BLUE, "check": Colors.YELLOW, "settings": Colors.HEADER,
+        "backup": Colors.GREEN, "restore": Colors.CYAN, "stats": Colors.BLUE
     }
-    
     icon = icons.get(status_type, "•")
     color = colors.get(status_type, Colors.END)
     print(f"{color}{icon} {message}{Colors.END}")
 
-def print_box(title: str, content: str):
-    """Print content in a beautiful box"""
-    print(Colors.CYAN + "┌" + "─" * (len(title) + 2) + "┐" + Colors.END)
-    print(Colors.CYAN + "│" + Colors.BOLD + title + Colors.END + Colors.CYAN + "│" + Colors.END)
-    print(Colors.CYAN + "├" + "─" * (len(title) + 2) + "┤" + Colors.END)
-    for line in content.split('\n'):
-        print(Colors.CYAN + "│" + Colors.END + " " + line + " " * (len(title) - len(line)) + Colors.CYAN + "│" + Colors.END)
-    print(Colors.CYAN + "└" + "─" * (len(title) + 2) + "┘" + Colors.END)
-
 def progress_bar(current: int, total: int, prefix: str = '', suffix: str = '', length: int = 40):
-    """Display a progress bar"""
+    """Display progress bar"""
+    if total <= 0:
+        return
     percent = 100 * (current / float(total))
-    filled_length = int(length * current // total)
-    bar = '█' * filled_length + '░' * (length - filled_length)
+    filled = int(length * current // total)
+    bar = '█' * filled + '░' * (length - filled)
     
-    # Color based on percentage
     if percent < 30:
         bar_color = Colors.RED
     elif percent < 70:
@@ -97,75 +111,93 @@ def progress_bar(current: int, total: int, prefix: str = '', suffix: str = '', l
     if current == total:
         print()
 
-# ==================== AUTO INSTALLER ====================
-def check_and_install_adb() -> bool:
-    """Auto-detect and install ADB if missing"""
-    print_status("Checking ADB installation...", "check")
-    
-    try:
-        subprocess.run(['adb', 'version'], capture_output=True, check=True)
-        print_status("ADB is already installed", "success")
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        print_status("ADB not found. Installing automatically...", "warning")
-        
-        # Detect package manager
-        try:
-            # Try pkg (Termux)
-            subprocess.run(['pkg', 'update'], capture_output=True, timeout=30)
-            subprocess.run(['pkg', 'install', 'android-tools', '-y'], capture_output=True, timeout=60)
-            print_status("ADB installed successfully via pkg", "success")
-            return True
-        except:
-            try:
-                # Try apt (Linux)
-                subprocess.run(['sudo', 'apt', 'update'], capture_output=True, timeout=30)
-                subprocess.run(['sudo', 'apt', 'install', 'android-tools-adb', '-y'], capture_output=True, timeout=60)
-                print_status("ADB installed successfully via apt", "success")
-                return True
-            except:
-                try:
-                    # Try pacman (Arch)
-                    subprocess.run(['sudo', 'pacman', '-S', 'android-tools', '--noconfirm'], capture_output=True, timeout=60)
-                    print_status("ADB installed successfully via pacman", "success")
-                    return True
-                except:
-                    print_status("Failed to install ADB automatically", "error")
-                    print_status("Please install manually: pkg install android-tools", "warning")
-                    return False
-
 # ==================== ADB FUNCTIONS ====================
-def run_adb(command: List[str], device_id: Optional[str] = None) -> Tuple[bool, str]:
-    """Execute ADB command with error handling"""
+def run_adb(command, device_id: Optional[str] = None, timeout: int = 15) -> Tuple[bool, str]:
+    """
+    Execute ADB command
+    command can be string or list
+    """
     try:
-        if device_id:
-            cmd = ['adb', '-s', device_id] + command
+        if isinstance(command, str):
+            cmd = command.split()
         else:
-            cmd = ['adb'] + command
+            cmd = command[:]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if device_id:
+            cmd = ['adb', '-s', device_id] + cmd
+        else:
+            cmd = ['adb'] + cmd
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         
         if result.returncode == 0:
             return True, result.stdout.strip()
-        else:
-            return False, result.stderr.strip()
+        return False, result.stderr.strip()
+        
     except subprocess.TimeoutExpired:
         return False, "Command timeout"
+    except FileNotFoundError:
+        return False, "ADB not installed"
     except Exception as e:
         return False, str(e)
 
-def get_connected_device() -> Optional[str]:
+def check_adb() -> bool:
+    """Check if ADB is installed, try to install if not"""
+    success, _ = run_adb(['version'])
+    if success:
+        return True
+    
+    print_status("ADB not found. Attempting to install...", "warning")
+    
+    # Detect Termux
+    if 'com.termux' in os.environ.get('PREFIX', ''):
+        try:
+            subprocess.run(['pkg', 'update'], capture_output=True, timeout=30)
+            subprocess.run(['pkg', 'install', 'android-tools', '-y'], capture_output=True, timeout=60)
+            print_status("ADB installed via pkg. Please restart the script.", "success")
+            return False
+        except:
+            pass
+    
+    # Detect Linux
+    elif platform.system() == 'Linux':
+        try:
+            subprocess.run(['sudo', 'apt', 'update'], capture_output=True, timeout=30)
+            subprocess.run(['sudo', 'apt', 'install', 'android-tools-adb', '-y'], capture_output=True, timeout=60)
+            print_status("ADB installed via apt. Please restart the script.", "success")
+            return False
+        except:
+            pass
+    
+    print_status("Could not install ADB automatically.", "error")
+    print_status("Please install manually: pkg install android-tools", "info")
+    return False
+
+def get_device(allow_wifi: bool = True) -> Optional[str]:
     """Get first connected device"""
     success, output = run_adb(['devices'])
     if not success:
         return None
     
     for line in output.split('\n'):
-        if line.strip() and 'device' in line and 'offline' not in line:
-            return line.split('\t')[0]
+        line = line.strip()
+        if line and 'device' in line and 'offline' not in line and 'unauthorized' not in line:
+            if '\t' in line:
+                return line.split('\t')[0]
+    
+    if allow_wifi:
+        print_status("No USB device found. Try WiFi connection? (y/n): ", "info")
+        choice = input().strip().lower()
+        if choice == 'y':
+            ip = input("Enter device IP address: ").strip()
+            port = input(f"Enter port [{DEFAULT_CONFIG['wifi_port']}]: ").strip()
+            port = port if port else str(DEFAULT_CONFIG['wifi_port'])
+            success, _ = run_adb(['connect', f"{ip}:{port}"])
+            if success:
+                return get_device(allow_wifi=False)
     return None
 
-def get_device_status(device_id: str) -> dict:
+def get_device_status(device_id: str) -> Dict:
     """Get comprehensive device status"""
     status = {
         'connected': False,
@@ -174,7 +206,8 @@ def get_device_status(device_id: str) -> dict:
         'resolution': 'Unknown',
         'density': 'Unknown',
         'battery': 'Unknown',
-        'available_ram': 'Unknown'
+        'ram_total': 0,
+        'ram_free': 0
     }
     
     # Check connection
@@ -185,112 +218,46 @@ def get_device_status(device_id: str) -> dict:
     status['connected'] = True
     
     # Get model
-    success, output = run_adb(['shell', 'getprop', 'ro.product.model'], device_id)
-    if success:
-        status['model'] = output
+    success, out = run_adb(['shell', 'getprop', 'ro.product.model'], device_id)
+    if success and out:
+        status['model'] = out[:40]
     
     # Get Android version
-    success, output = run_adb(['shell', 'getprop', 'ro.build.version.release'], device_id)
-    if success:
-        status['android'] = output
+    success, out = run_adb(['shell', 'getprop', 'ro.build.version.release'], device_id)
+    if success and out:
+        status['android'] = out[:20]
     
     # Get resolution
-    success, output = run_adb(['shell', 'wm', 'size'], device_id)
-    if success and 'Physical size:' in output:
-        status['resolution'] = output.split('Physical size:')[1].strip()
+    success, out = run_adb(['shell', 'wm', 'size'], device_id)
+    if success and 'Physical size:' in out:
+        status['resolution'] = out.split('Physical size:')[1].strip()
     
     # Get density
-    success, output = run_adb(['shell', 'wm', 'density'], device_id)
-    if success and 'Physical density:' in output:
-        status['density'] = output.split('Physical density:')[1].strip()
+    success, out = run_adb(['shell', 'wm', 'density'], device_id)
+    if success and 'Physical density:' in out:
+        status['density'] = out.split('Physical density:')[1].strip()
     
     # Get battery
-    success, output = run_adb(['shell', 'dumpsys', 'battery', '|', 'grep', 'level'], device_id)
-    if success and 'level:' in output:
-        status['battery'] = output.split('level:')[1].strip() + '%'
-    
-    # Get RAM info
-    success, output = run_adb(['shell', 'free', '-m'], device_id)
+    success, out = run_adb(['shell', 'dumpsys', 'battery'], device_id)
     if success:
-        lines = output.split('\n')
-        for line in lines:
-            if 'Mem:' in line:
-                parts = line.split()
-                if len(parts) >= 3:
-                    total = int(parts[1])
-                    available = int(parts[2])
-                    used = total - available
-                    status['available_ram'] = f"{available}MB / {total}MB ({int((available/total)*100)}% free)"
+        for line in out.split('\n'):
+            if 'level:' in line:
+                status['battery'] = line.split(':')[1].strip() + '%'
+                break
+    
+    # Get RAM (try different methods)
+    success, out = run_adb(['shell', 'cat', '/proc/meminfo'], device_id)
+    if success:
+        for line in out.split('\n'):
+            if 'MemTotal:' in line:
+                status['ram_total'] = int(line.split()[1]) // 1024
+            elif 'MemAvailable:' in line:
+                status['ram_free'] = int(line.split()[1]) // 1024
     
     return status
 
-def backup_current_settings(device_id: str) -> bool:
-    """Backup current resolution and density"""
-    print_status("Backing up current settings...", "progress")
-    
-    # Backup resolution
-    success, output = run_adb(['shell', 'wm', 'size'], device_id)
-    if success:
-        run_adb(['shell', f"echo '{output}' > /sdcard/resolution_backup.txt"], device_id)
-    
-    # Backup density
-    success, output = run_adb(['shell', 'wm', 'density'], device_id)
-    if success:
-        run_adb(['shell', f"echo '{output}' > /sdcard/density_backup.txt"], device_id)
-    
-    print_status("Settings backed up to /sdcard/", "success")
-    return True
-
-def apply_optimization(device_id: str, callback=None) -> bool:
-    """Apply all optimizations with progress tracking"""
-    steps = [
-        ("Changing resolution to 550x1550", "wm size 550x1550"),
-        ("Adjusting DPI for better display", "wm density 240"),
-        ("Killing Facebook", "am force-stop com.facebook.katana"),
-        ("Killing Instagram", "am force-stop com.instagram.android"),
-        ("Killing WhatsApp", "am force-stop com.whatsapp"),
-        ("Killing TikTok", "am force-stop com.zhiliaoapp.musically"),
-        ("Killing Snapchat", "am force-stop com.snapchat.android"),
-        ("Killing Twitter", "am force-stop com.twitter.android"),
-        ("Killing YouTube", "am force-stop com.google.android.youtube"),
-        ("Clearing cache", "pm trim-caches 9999999999"),
-        ("Optimizing memory", "echo 3 > /proc/sys/vm/drop_caches")
-    ]
-    
-    total_steps = len(steps)
-    for i, (description, command) in enumerate(steps):
-        if callback:
-            callback(i + 1, total_steps, description)
-        
-        # Execute command
-        if command.startswith("wm") or command.startswith("am") or command.startswith("pm"):
-            run_adb(['shell', command], device_id)
-        elif command.startswith("echo"):
-            run_adb(['shell', command], device_id)
-    
-    return True
-
-def restore_default(device_id: str, callback=None) -> bool:
-    """Restore all default settings"""
-    steps = [
-        ("Restoring original resolution", "wm size reset"),
-        ("Restoring original DPI", "wm density reset"),
-        ("Cleaning up", "echo 'Restored to default'")
-    ]
-    
-    total_steps = len(steps)
-    for i, (description, command) in enumerate(steps):
-        if callback:
-            callback(i + 1, total_steps, description)
-        
-        if command.startswith("wm") or command.startswith("echo"):
-            run_adb(['shell', command], device_id)
-    
-    return True
-
-# ==================== MAIN INTERFACE ====================
-def show_device_dashboard(device_id: str):
-    """Show beautiful device dashboard"""
+def show_dashboard(device_id: str) -> bool:
+    """Display device dashboard"""
     print_status("Fetching device information...", "progress")
     status = get_device_status(device_id)
     
@@ -301,191 +268,256 @@ def show_device_dashboard(device_id: str):
     print("\n" + Colors.CYAN + "╔" + "═" * 58 + "╗" + Colors.END)
     print(Colors.CYAN + "║" + Colors.BOLD + Colors.GREEN + " " * 18 + "DEVICE DASHBOARD" + " " * 19 + Colors.CYAN + "║" + Colors.END)
     print(Colors.CYAN + "╠" + "═" * 58 + "╣" + Colors.END)
-    
-    # Device info
     print(Colors.CYAN + "║" + Colors.END + f" 📱 Model:        {status['model']:<40}" + Colors.CYAN + "║" + Colors.END)
     print(Colors.CYAN + "║" + Colors.END + f" 🤖 Android:      {status['android']:<40}" + Colors.CYAN + "║" + Colors.END)
     print(Colors.CYAN + "║" + Colors.END + f" 📺 Resolution:   {status['resolution']:<40}" + Colors.CYAN + "║" + Colors.END)
     print(Colors.CYAN + "║" + Colors.END + f" 🖌️  DPI:          {status['density']:<40}" + Colors.CYAN + "║" + Colors.END)
     print(Colors.CYAN + "║" + Colors.END + f" 🔋 Battery:      {status['battery']:<40}" + Colors.CYAN + "║" + Colors.END)
-    print(Colors.CYAN + "║" + Colors.END + f" 💾 RAM:          {status['available_ram']:<40}" + Colors.CYAN + "║" + Colors.END)
     
-    # Battery bar
-    if status['battery'] != 'Unknown':
-        try:
-            battery_level = int(status['battery'].replace('%', ''))
-            bar_length = 20
-            filled = int(bar_length * battery_level / 100)
-            battery_bar = '█' * filled + '░' * (bar_length - filled)
-            if battery_level < 20:
-                bar_color = Colors.RED
-            elif battery_level < 50:
-                bar_color = Colors.YELLOW
-            else:
-                bar_color = Colors.GREEN
-            print(Colors.CYAN + "║" + Colors.END + f" 🔋 Battery Bar:  {bar_color}{battery_bar}{Colors.END} ({battery_level}%)" + " " * (40 - len(str(battery_level))) + Colors.CYAN + "║" + Colors.END)
-        except:
-            pass
+    if status['ram_total'] > 0:
+        used = status['ram_total'] - status['ram_free']
+        percent_free = int((status['ram_free'] / status['ram_total']) * 100)
+        bar_length = 20
+        filled = int(bar_length * status['ram_free'] / status['ram_total'])
+        bar = '█' * filled + '░' * (bar_length - filled)
+        bar_color = Colors.GREEN if percent_free > 30 else Colors.RED
+        print(Colors.CYAN + "║" + Colors.END + f" 💾 RAM:          {status['ram_free']}MB / {status['ram_total']}MB ({percent_free}% free)" + " " * (40 - len(str(status['ram_free']))) + Colors.CYAN + "║" + Colors.END)
+        print(Colors.CYAN + "║" + Colors.END + f"                  {bar_color}{bar}{Colors.END}" + " " * 44 + Colors.CYAN + "║" + Colors.END)
     
     print(Colors.CYAN + "╚" + "═" * 58 + "╝" + Colors.END)
     return True
 
-def optimize_with_progress(device_id: str):
-    """Run optimization with beautiful progress bar"""
-    print_status("Starting system optimization...", "progress")
-    print()
+def backup_settings(device_id: str):
+    """Backup current resolution and density"""
+    print_status("Backing up current settings...", "backup")
     
-    # Create progress callback
-    def update_progress(current, total, description):
-        percent = int((current / total) * 100)
-        progress_bar(current, total, prefix=f'  {description[:30]:<30}', suffix=f'{percent}%')
+    success, out = run_adb(['shell', 'wm', 'size'], device_id)
+    if success and out:
+        run_adb(['shell', f"echo '{out}' > /sdcard/resolution_backup.txt"], device_id)
     
-    # Apply optimization
-    success = apply_optimization(device_id, update_progress)
+    success, out = run_adb(['shell', 'wm', 'density'], device_id)
+    if success and out:
+        run_adb(['shell', f"echo '{out}' > /sdcard/density_backup.txt"], device_id)
     
-    print()
-    if success:
-        print_status("Optimization completed successfully!", "success")
-        print_status("Screen resolution changed to 550x1550", "success")
-        print_status("All background apps have been terminated", "success")
-        print_status("System performance optimized", "success")
-    else:
-        print_status("Optimization encountered errors", "error")
-    
-    return success
+    print_status("Settings backed up to /sdcard/", "success")
 
-def restore_with_progress(device_id: str):
-    """Restore default with beautiful progress bar"""
-    print_status("Restoring default settings...", "progress")
-    print()
+def apply_optimization(device_id: str, config: dict, callback: Optional[Callable] = None) -> bool:
+    """Apply all optimizations"""
+    steps = [
+        (f"Set resolution {config['resolution']['width']}x{config['resolution']['height']}", 
+         f"wm size {config['resolution']['width']}x{config['resolution']['height']}"),
+        (f"Set DPI to {config['dpi']}", f"wm density {config['dpi']}"),
+    ]
     
-    def update_progress(current, total, description):
-        percent = int((current / total) * 100)
-        progress_bar(current, total, prefix=f'  {description[:30]:<30}', suffix=f'{percent}%')
+    # Add app killing
+    for app in config['apps_to_kill']:
+        steps.append((f"Kill {app}", f"am force-stop {app}"))
     
-    success = restore_default(device_id, update_progress)
+    steps.append(("Clear cache", "pm trim-caches 9999999999"))
     
-    print()
-    if success:
-        print_status("Default settings restored!", "success")
-        print_status("Screen resolution returned to original", "success")
-        print_status("All system settings reset", "success")
-    else:
-        print_status("Restore operation encountered errors", "error")
+    total = len(steps)
+    for i, (desc, cmd) in enumerate(steps):
+        if callback:
+            callback(i + 1, total, desc)
+        run_adb(['shell', cmd], device_id, timeout=5)
+        time.sleep(0.1)
     
-    return success
+    return True
+
+def restore_default(device_id: str, callback: Optional[Callable] = None) -> bool:
+    """Restore default settings"""
+    steps = [
+        ("Restore resolution", "wm size reset"),
+        ("Restore DPI", "wm density reset"),
+    ]
+    
+    total = len(steps)
+    for i, (desc, cmd) in enumerate(steps):
+        if callback:
+            callback(i + 1, total, desc)
+        run_adb(['shell', cmd], device_id)
+        time.sleep(0.1)
+    
+    return True
+
+def manage_apps(device_id: str):
+    """Interactive app management"""
+    print_status("Fetching installed apps...", "progress")
+    success, out = run_adb(['shell', 'pm', 'list', 'packages', '-3'], device_id)
+    
+    if not success:
+        print_status("Failed to get app list", "error")
+        return
+    
+    apps = []
+    for line in out.split('\n'):
+        if line and 'package:' in line:
+            apps.append(line.replace('package:', '').strip())
+    
+    if not apps:
+        print_status("No user apps found", "info")
+        return
+    
+    print(f"\n{Colors.BOLD}Installed Apps ({len(apps)} total):{Colors.END}")
+    for i, app in enumerate(apps[:20], 1):
+        # Get app name if possible
+        success, name = run_adb(['shell', 'pm', 'list', 'packages', app], device_id)
+        display = app.split('.')[-1] if '.' in app else app
+        print(f"  {Colors.CYAN}{i:2}{Colors.END}. {display:<30} ({app})")
+    
+    if len(apps) > 20:
+        print(f"  ... and {len(apps)-20} more apps")
+    
+    print("\n" + Colors.YELLOW + "Options:" + Colors.END)
+    print("  • Enter number to kill specific app")
+    print("  • 'all' to kill ALL user apps")
+    print("  • 'back' to return")
+    
+    choice = input(f"\n{Colors.GREEN}➤ {Colors.END}").strip().lower()
+    
+    if choice == 'all':
+        confirm = input(f"{Colors.RED}Kill ALL user apps? (y/n): {Colors.END}").strip().lower()
+        if confirm == 'y':
+            for app in apps:
+                run_adb(['shell', 'am', 'force-stop', app], device_id)
+                print(f"  Killed: {app}")
+            print_status("All user apps killed", "success")
+    
+    elif choice.isdigit():
+        idx = int(choice) - 1
+        if 0 <= idx < len(apps):
+            run_adb(['shell', 'am', 'force-stop', apps[idx]], device_id)
+            print_status(f"Killed {apps[idx]}", "success")
+        else:
+            print_status("Invalid number", "error")
+    
+    elif choice != 'back':
+        print_status("Invalid choice", "error")
 
 # ==================== MAIN PROGRAM ====================
 def main():
-    """Main program with beautiful interface"""
-    try:
-        # Check and install ADB
-        if not check_and_install_adb():
-            sys.exit(1)
+    """Main program entry"""
+    config = load_config()
+    
+    if not check_adb():
+        print_status("Please install ADB and restart", "error")
+        sys.exit(1)
+    
+    print_header()
+    
+    device_id = get_device()
+    if not device_id:
+        print_status("No device connected. Exiting.", "error")
+        sys.exit(1)
+    
+    print_status(f"Connected to {device_id}", "success")
+    show_dashboard(device_id)
+    
+    if config.get('auto_backup', True):
+        backup_settings(device_id)
+    
+    while True:
+        print("\n" + Colors.GREEN + "╔" + "═" * 58 + "╗" + Colors.END)
+        print(Colors.GREEN + "║" + Colors.BOLD + " " * 22 + "MAIN MENU" + " " * 28 + Colors.GREEN + "║" + Colors.END)
+        print(Colors.GREEN + "╠" + "═" * 58 + "╣" + Colors.END)
+        print(Colors.GREEN + "║" + Colors.END + f"  {Colors.BOLD}1{Colors.END}. 🚀 OPTIMIZE MODE (Speed up)" + " " * 26 + Colors.GREEN + "║" + Colors.END)
+        print(Colors.GREEN + "║" + Colors.END + f"  {Colors.BOLD}2{Colors.END}. 🔄 RESTORE MODE (Back to normal)" + " " * 22 + Colors.GREEN + "║" + Colors.END)
+        print(Colors.GREEN + "║" + Colors.END + f"  {Colors.BOLD}3{Colors.END}. 📱 MANAGE APPS (Kill specific)" + " " * 23 + Colors.GREEN + "║" + Colors.END)
+        print(Colors.GREEN + "║" + Colors.END + f"  {Colors.BOLD}4{Colors.END}. 📊 SHOW DEVICE INFO" + " " * 35 + Colors.GREEN + "║" + Colors.END)
+        print(Colors.GREEN + "║" + Colors.END + f"  {Colors.BOLD}5{Colors.END}. 💾 BACKUP SETTINGS" + " " * 37 + Colors.GREEN + "║" + Colors.END)
+        print(Colors.GREEN + "║" + Colors.END + f"  {Colors.BOLD}6{Colors.END}. 🔌 RECONNECT DEVICE" + " " * 35 + Colors.GREEN + "║" + Colors.END)
+        print(Colors.GREEN + "║" + Colors.END + f"  {Colors.BOLD}7{Colors.END}. ❌ EXIT" + " " * 51 + Colors.GREEN + "║" + Colors.END)
+        print(Colors.GREEN + "╚" + "═" * 58 + "╝" + Colors.END)
         
-        # Find device
-        print_status("Searching for connected device...", "check")
-        device_id = get_connected_device()
+        choice = input(f"\n{Colors.BOLD}{Colors.CYAN}➤ Select option [1-7]: {Colors.END}").strip()
         
-        if not device_id:
-            print_status("No device found!", "error")
-            print("\n" + Colors.YELLOW + "Troubleshooting:" + Colors.END)
-            print("  1. Connect device via USB OTG cable")
-            print("  2. Enable USB Debugging on target device")
-            print("  3. Accept the RSA fingerprint prompt")
-            print("  4. Try reconnecting the cable")
-            print("\n" + Colors.CYAN + "Or try WiFi connection:" + Colors.END)
-            print("  1. Connect both devices to same WiFi")
-            print("  2. On target device: adb tcpip 5555")
-            print("  3. Enter IP address below")
+        if choice == '1':
+            print_header()
+            print_status("OPTIMIZATION MODE", "success")
+            print("This will:")
+            print(f"  • Set resolution to {config['resolution']['width']}x{config['resolution']['height']}")
+            print(f"  • Set DPI to {config['dpi']}")
+            print(f"  • Kill {len(config['apps_to_kill'])} background apps")
+            print("  • Clear system cache")
             
-            ip = input("\n" + Colors.GREEN + "Enter IP for WiFi connection (or press Enter to exit): " + Colors.END).strip()
-            if ip:
-                print_status(f"Connecting to {ip}:5555...", "wifi")
-                success, _ = run_adb(['connect', f"{ip}:5555"])
-                if success:
-                    device_id = get_connected_device()
-                else:
-                    print_status("WiFi connection failed", "error")
-                    sys.exit(1)
+            confirm = input(f"\n{Colors.YELLOW}Continue? (y/n): {Colors.END}").strip().lower()
+            if confirm == 'y':
+                def update_progress(current, total, desc):
+                    progress_bar(current, total, prefix=f'  {desc[:30]:<30}')
+                
+                apply_optimization(device_id, config, update_progress)
+                print()
+                print_status("Optimization completed successfully!", "success")
+                print_status("Device is now in high-performance mode", "info")
             else:
-                sys.exit(1)
-        
-        # Show device dashboard
-        print_header()
-        if not show_device_dashboard(device_id):
-            sys.exit(1)
-        
-        # Backup current settings
-        backup_current_settings(device_id)
-        
-        # Main menu with only 2 options
-        while True:
-            print("\n" + Colors.GREEN + "╔" + "═" * 58 + "╗" + Colors.END)
-            print(Colors.GREEN + "║" + Colors.BOLD + " " * 20 + "MAIN MENU" + " " * 28 + Colors.GREEN + "║" + Colors.END)
-            print(Colors.GREEN + "╠" + "═" * 58 + "╣" + Colors.END)
-            print(Colors.GREEN + "║" + Colors.END + f"  {Colors.BOLD}1{Colors.END}. 🚀 {Colors.GREEN}OPTIMIZE MODE{Colors.END} - Speed up device" + " " * 17 + Colors.GREEN + "║" + Colors.END)
-            print(Colors.GREEN + "║" + Colors.END + f"  {Colors.BOLD}2{Colors.END}. 🔄 {Colors.YELLOW}RESTORE MODE{Colors.END} - Back to normal" + " " * 20 + Colors.GREEN + "║" + Colors.END)
-            print(Colors.GREEN + "║" + Colors.END + f"  {Colors.BOLD}3{Colors.END}. ❌ EXIT" + " " * 51 + Colors.GREEN + "║" + Colors.END)
-            print(Colors.GREEN + "╚" + "═" * 58 + "╝" + Colors.END)
+                print_status("Operation cancelled", "warning")
             
-            choice = input(f"\n{Colors.BOLD}{Colors.CYAN}➤ Select option [1-3]: {Colors.END}").strip()
+            input(f"\n{Colors.DIM}Press Enter to continue...{Colors.END}")
+        
+        elif choice == '2':
+            print_header()
+            print_status("RESTORE MODE", "warning")
+            print("This will:")
+            print("  • Restore original screen resolution")
+            print("  • Restore original DPI")
             
-            if choice == '1':
-                print_header()
-                print_status("OPTIMIZATION MODE ACTIVATED", "success")
-                print_status("This will:", "info")
-                print("  • Change resolution to 550x1550")
-                print("  • Kill all background apps")
-                print("  • Clear system cache")
-                print("  • Optimize RAM usage")
+            confirm = input(f"\n{Colors.YELLOW}Restore default settings? (y/n): {Colors.END}").strip().lower()
+            if confirm == 'y':
+                def update_progress(current, total, desc):
+                    progress_bar(current, total, prefix=f'  {desc[:30]:<30}')
                 
-                confirm = input(f"\n{Colors.YELLOW}Continue? (y/n): {Colors.END}").strip().lower()
-                if confirm == 'y':
-                    optimize_with_progress(device_id)
-                    print_status("Device is now in high-performance mode!", "success")
-                    print_status("To return to normal, use RESTORE MODE", "info")
-                else:
-                    print_status("Operation cancelled", "warning")
-                
-                input(f"\n{Colors.DIM}Press Enter to continue...{Colors.END}")
-                
-            elif choice == '2':
-                print_header()
-                print_status("RESTORE MODE ACTIVATED", "warning")
-                print_status("This will:", "info")
-                print("  • Restore original screen resolution")
-                print("  • Restore original DPI")
-                print("  • Reset all system settings")
-                
-                confirm = input(f"\n{Colors.YELLOW}Restore default settings? (y/n): {Colors.END}").strip().lower()
-                if confirm == 'y':
-                    restore_with_progress(device_id)
-                    print_status("Device restored to normal mode!", "success")
-                else:
-                    print_status("Operation cancelled", "warning")
-                
-                input(f"\n{Colors.DIM}Press Enter to continue...{Colors.END}")
-                
-            elif choice == '3':
-                print_header()
-                print_status("Thank you for using Smart ADB Tool Pro!", "success")
-                print_status("Goodbye! 👋", "info")
-                time.sleep(1)
-                clear_screen()
-                sys.exit(0)
+                restore_default(device_id, update_progress)
+                print()
+                print_status("Device restored to default settings!", "success")
             else:
-                print_status("Invalid option. Please choose 1, 2, or 3", "error")
-                time.sleep(1)
+                print_status("Operation cancelled", "warning")
+            
+            input(f"\n{Colors.DIM}Press Enter to continue...{Colors.END}")
+        
+        elif choice == '3':
+            print_header()
+            manage_apps(device_id)
+            input(f"\n{Colors.DIM}Press Enter to continue...{Colors.END}")
+        
+        elif choice == '4':
+            print_header()
+            show_dashboard(device_id)
+            input(f"\n{Colors.DIM}Press Enter to continue...{Colors.END}")
+        
+        elif choice == '5':
+            backup_settings(device_id)
+            input(f"\n{Colors.DIM}Press Enter to continue...{Colors.END}")
+        
+        elif choice == '6':
+            print_header()
+            print_status("Reconnecting...", "progress")
+            device_id = get_device()
+            if device_id:
+                print_status(f"Reconnected to {device_id}", "success")
+                show_dashboard(device_id)
+            else:
+                print_status("No device found", "error")
+            input(f"\n{Colors.DIM}Press Enter to continue...{Colors.END}")
+        
+        elif choice == '7':
+            print_header()
+            print_status("Thank you for using Smart ADB Ultimate!", "success")
+            print_status("Goodbye! 👋", "info")
+            time.sleep(1)
+            clear_screen()
+            sys.exit(0)
+        
+        else:
+            print_status("Invalid option. Please choose 1-7", "error")
+            time.sleep(1)
 
+if __name__ == "__main__":
+    try:
+        main()
     except KeyboardInterrupt:
         print("\n")
-        print_status("Interrupted by user", "warning")
-        print_status("Goodbye! 👋", "info")
+        print_status("Interrupted by user. Exiting...", "warning")
         sys.exit(0)
     except Exception as e:
         print_status(f"Unexpected error: {e}", "error")
         sys.exit(1)
-
-if __name__ == "__main__":
-    main()
